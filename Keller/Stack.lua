@@ -1,3 +1,8 @@
+---Stack implementation
+---@class Stack
+---@field data table the data in the stack
+---@field current number the current index of the stack
+---@return table Stack the stack
 function Stack()
     return {
         data = {},
