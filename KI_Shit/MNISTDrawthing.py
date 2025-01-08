@@ -151,5 +151,5 @@ class DigitRecognizerApp:
 # Main script
 if __name__ == "__main__":
     # Replace 'path_to_model.pth' with the actual path to your trained model file
-    app = DigitRecognizerApp(model_path="model-Iterations/mnist_model.pth")
+    app = DigitRecognizerApp(model_path="model-Iterations/mnist_model_18.pth")
     app.run()
