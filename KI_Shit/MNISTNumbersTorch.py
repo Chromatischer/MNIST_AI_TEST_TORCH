@@ -1,3 +1,5 @@
+import os.path
+
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
@@ -6,6 +8,63 @@ import torch.nn as nn
 import torch.nn.functional as f
 import torch.optim as optim
 import torch
+import time
+import threading
+import sys
+
+import NeuralNetWithBatchNorm
+import pathGen
+
+class ProgressBarThread(threading.Thread):
+    def __init__(self, total_epochs, bar_length=50, start_time=time.time()):
+        super().__init__()
+        self.total_epochs = total_epochs
+        self.current_epoch = 0
+        self.current_batch = 0
+        self.total_batches = 0
+        self.time = start_time
+        self.bar_length = bar_length
+        self.running = True
+        self.lock = threading.Lock()
+
+    def update_epoch(self, smthn, total_batches):
+        with self.lock:
+            self.current_epoch = smthn
+            self.total_batches = total_batches
+            self.current_batch = 0
+
+    def update_batch(self, batch):
+        with self.lock:
+            self.current_batch = batch
+
+    def stop(self):
+        self.running = False
+
+    def run(self):
+        while self.running:
+            with self.lock:
+                # Epoch and batch progress information
+                epoch_progress = f"Epoch: {self.current_epoch}/{self.total_epochs}"
+                batch_progress = (
+                    f" | Batch: {self.current_batch}/{self.total_batches}"
+                    if self.total_batches > 0
+                    else ""
+                )
+
+                # Calculate progress bar
+                if self.total_batches > 0:
+                    progress = self.current_batch / self.total_batches
+                    filled_length = int(self.bar_length * progress)
+                    bar = "=" * filled_length + "-" * (self.bar_length - filled_length)
+                else:
+                    bar = "-" * self.bar_length
+
+                progress_line = f"{epoch_progress} {batch_progress} | [{bar}] {round((time.time() - self.time))}s\r"
+                sys.stdout.write(progress_line)
+                sys.stdout.flush()
+            time.sleep(0.1)  # Update interval
+
+torch.backends.cudnn.benchmark = True
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -21,13 +80,15 @@ test_dataset = datasets.MNIST(root='./data', train=False, download=True, transfo
 
 # Create DataLoaders
 
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=512, shuffle=True, num_workers=0, pin_memory=True)
+test_loader = DataLoader(test_dataset, batch_size=512, shuffle=False, num_workers=0, pin_memory=True)
 
 # Verify the data
 
 data_iter = iter(train_loader)
 images, labels = next(data_iter)
+
+print(images[3])
 
 print(f"Image batch dimensions: {images.shape}")
 print(f"Image label dimensions: {labels.shape}")
@@ -71,25 +132,6 @@ class NeuralNetWithDropout(nn.Module):
         x = self.fc3(x)                   # Output layer
         return x
 
-class NeuralNetWithBatchNorm(nn.Module):
-    def __init__(self):
-        super(NeuralNetWithBatchNorm, self).__init__()
-        self.fc1 = nn.Linear(28 * 28, 128)  # Input to first hidden layer
-        self.bn1 = nn.BatchNorm1d(128)  # Batch normalization for first hidden layer
-        self.fc2 = nn.Linear(128, 64)  # First to second hidden layer
-        self.bn2 = nn.BatchNorm1d(64)  # Batch normalization for second hidden layer
-        self.fc3 = nn.Linear(64, 10)  # Second hidden to output layer
-        self.dropout = nn.Dropout(0.2)  # Dropout layer with 50% rate
-
-    def forward(self, x):
-        x = x.view(-1, 28 * 28)  # Flatten the image
-        x = f.relu(self.bn1(self.fc1(x)))  # First hidden layer with batch norm and ReLU
-        x = self.dropout(x)  # Apply dropout
-        x = f.relu(self.bn2(self.fc2(x)))  # Second hidden layer with batch norm and ReLU
-        x = self.dropout(x)  # Apply dropout
-        x = self.fc3(x)  # Output layer
-        return x
-
 class CNN(nn.Module):
     def __init__(self):
         super(CNN, self).__init__()
@@ -115,12 +157,12 @@ class CNN(nn.Module):
         x = self.fc2(x)          # Output layer
         return x
 
-model = NeuralNetWithBatchNorm().to(device)
+model = NeuralNetWithBatchNorm.NeuralNetWithBatchNorm().to(device)
 
 # Loss function and optimizer
 
 criterion = nn.CrossEntropyLoss()           # Loss function
-optimizer = optim.Adam(model.parameters(), lr=0.001)  # Optimizer
+optimizer = optim.AdamW(model.parameters(), lr=0.005)  # Optimizer
 
 for images, labels in train_loader:
     # Debugging shapes
@@ -140,9 +182,16 @@ for images, labels in train_loader:
 
 epochs = 15
 
+start = time.time()
+progress_thread = ProgressBarThread(total_epochs=epochs)
+progress_thread.start()
+last = start
+curr = start
+
 for epoch in range(epochs):
     model.train()  # Set the model to training mode
     running_loss = 0.0
+    progress_thread.update_epoch(epoch + 1, len(train_loader))
 
     for images, labels in train_loader:
         images, labels = images.to(device), labels.to(device)
@@ -158,7 +207,16 @@ for epoch in range(epochs):
 
         running_loss += loss.item()
 
-    print(f"Epoch {epoch + 1}/{epochs}, Loss: {running_loss / len(train_loader):.4f}")
+        last = curr
+        curr = time.time()
+        progress_thread.update_batch(progress_thread.current_batch + 1)
+
+    print(f"Epoch {epoch + 1}/{epochs}, Loss: {running_loss / len(train_loader):.4f}, Time: {(curr - last) * 1000:.2f} ms")
+
+progress_thread.stop()
+progress_thread.join()
+
+print(f"Training took: {time.time() - start:.2f} seconds")
 
 # Test the model
 
@@ -181,7 +239,7 @@ print(f"Test Accuracy: {100 * correct / total:.2f}%")
 
 # Save the model
 
-path = "mnist_model.pth"
+path = pathGen.generate_unique_filename("mnist_model.pth", "model-Iterations")
 
 torch.save(model.state_dict(), path)
 print(f"Saved PyTorch Model Saved to: {path}")

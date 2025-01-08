@@ -30,7 +30,7 @@ optimizer = tf.optimizers.SGD(learning_rate=0.01)
 start = time.time()
 last_time = start
 this_time = start
-epochs = 5_000
+epochs = 50_000
 with tf.device('/GPU:0' if tf.config.list_physical_devices('GPU') else '/CPU:0'):
     for epoch in range(epochs):
         with tf.GradientTape() as tape:
