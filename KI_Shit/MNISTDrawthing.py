@@ -189,6 +189,7 @@ class DigitRecognizerApp:
 if __name__ == "__main__":
     print("Starting the Application")
     # Replace 'path_to_model.pth' with the actual path to your trained model file
-    app = DigitRecognizerApp(model_path="model-Iterations/mnist_model_21.pth")
+    # both model 21 and model 22 use CNNs! 22 has been trained for more Epochs, untested though!
+    app = DigitRecognizerApp(model_path="model21.pth")
     app.run()
     print("Application Stopped!")
