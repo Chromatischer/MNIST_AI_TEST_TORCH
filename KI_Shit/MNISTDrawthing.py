@@ -7,9 +7,10 @@ from PIL import Image, ImageGrab
 from rich.box import SQUARE
 from sympy import print_glsl
 
+import CNN_Network
 import NeuralNetWithBatchNorm
 
-SHOW_TEST_IMAGE = False
+EXTENDED_DEBUG_INFO = False
 
 
 # Define the class for your Tkinter-based drawing application
@@ -36,7 +37,7 @@ class DigitRecognizerApp:
 
         # Load the trained PyTorch model
         print("Loading model...")
-        model = NeuralNetWithBatchNorm.NeuralNetWithBatchNorm()
+        model = CNN_Network.CNNForMNIST().to("cpu")
         model.load_state_dict(torch.load(model_path, weights_only=True))
         model.eval()  # Set the model to evaluation mode
         self.model = model
@@ -51,7 +52,7 @@ class DigitRecognizerApp:
     def draw(self, event):
         """Draw a line on the canvas where the mouse moves."""
         if self.x and self.y:
-            self.canvas.create_line((self.x, self.y, event.x, event.y), width=12, fill="black", capstyle=ROUND, smooth=TRUE)
+            self.canvas.create_line((self.x, self.y, event.x, event.y), width=14, fill="black", capstyle=ROUND, smooth=TRUE)
         self.x, self.y = event.x, event.y
 
     def clear_canvas(self):
@@ -88,36 +89,43 @@ class DigitRecognizerApp:
 
         # Preprocess the image to match the model input
         img = img.resize((28, 28), Image.Resampling.BICUBIC) # Resize to 28x28 pixels
-        if SHOW_TEST_IMAGE: img.show(title="Resized Image")
+        if EXTENDED_DEBUG_INFO: img.show(title="Resized Image")
 
         # Convert to numpy array
         img_array = np.asarray(img)
-        if SHOW_TEST_IMAGE: print(img_array)
+        if EXTENDED_DEBUG_INFO: print(img_array)
 
         print("Image array created", img_array.shape)
 
         img = Image.fromarray(img_array, mode="L")
-        if SHOW_TEST_IMAGE: img.show(title="Image Array")
+        if EXTENDED_DEBUG_INFO: img.show(title="Image Array")
 
         #invert colors of the image
         img_array =  ((1 - img_array / 255.0) * 2) - 1 # img_array / 255.0 -> 0 to 1, * 2 -> 0 to 2, X - 1 -> -1 to 1
-        if SHOW_TEST_IMAGE: NeuralNetWithBatchNorm.printCleanNumpyArray(img_array)
+        if EXTENDED_DEBUG_INFO: NeuralNetWithBatchNorm.printCleanNumpyArray(img_array)
 
         #show the image after processing
         another_array = ((img_array + 1) / 2) * 255
-        if SHOW_TEST_IMAGE: NeuralNetWithBatchNorm.printCleanNumpyArray(another_array)
+        if EXTENDED_DEBUG_INFO: NeuralNetWithBatchNorm.printCleanNumpyArray(another_array)
 
         img = Image.fromarray(another_array)
-        if SHOW_TEST_IMAGE: img.show(title="After Inversion")
+        if EXTENDED_DEBUG_INFO: img.show(title="After Inversion")
 
         print("Image array inverted")
 
         img_tensor = torch.tensor(img_array, dtype=torch.float32)  # Normalize and add batch/channel dims
 
+        img_tensor = img_tensor.unsqueeze(0) # Converting to dimension [0, 28, 28] (Channel Dimension)
+
+        img_tensor = img_tensor.unsqueeze(0) # Converting into 4D [0, 0, 28, 28] (Batch Dimension)
+
+        print("Converted Image Dimension!")
+        if EXTENDED_DEBUG_INFO: print("Converted Image Shape: ", img_tensor.shape)
+
         # Use the model to predict
         with torch.no_grad():
             prediction = self.model(img_tensor)
-            print(prediction)
+            if EXTENDED_DEBUG_INFO: print(prediction)
             # Better prediction display in command line:
             for i in range(10):
                 print(f"{i}: {NeuralNetWithBatchNorm.number_Modifier(prediction[0][i].item()):.2f}% was: ({prediction[0][i].item():.2f})")
@@ -151,5 +159,5 @@ class DigitRecognizerApp:
 # Main script
 if __name__ == "__main__":
     # Replace 'path_to_model.pth' with the actual path to your trained model file
-    app = DigitRecognizerApp(model_path="model-Iterations/mnist_model_18.pth")
+    app = DigitRecognizerApp(model_path="model-Iterations/mnist_model_21.pth")
     app.run()
