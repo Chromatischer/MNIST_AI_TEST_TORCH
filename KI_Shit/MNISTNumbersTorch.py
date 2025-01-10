@@ -6,8 +6,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torch
 import time
-import threading
-import sys
 
 import CNN_Network
 import NeuralNetWithBatchNorm
@@ -19,7 +17,7 @@ SAVE_MODEL_ABOVE_ACCURACY = 98.2      # Save if accuracy is above this value eve
 ENABLE_CUDNN_BENCHMARK = True         # Enable CUDNN Benchmarking
 LOADER_BATCH_SIZE = 512               # Batch size for the DataLoader
 ALLOW_DATA_DOWNLOAD = False           # Allow downloading the data
-TRAIN_EPOCHS = 20                     # Number of epochs to train for
+TRAIN_EPOCHS = 25                     # Number of epochs to train for
 
 torch.backends.cudnn.benchmark = ENABLE_CUDNN_BENCHMARK
 print("CUDNN Benchmarking: ", "Enabled" if ENABLE_CUDNN_BENCHMARK else "Disabled")
@@ -48,6 +46,8 @@ test_loader = DataLoader(test_dataset, batch_size=LOADER_BATCH_SIZE, shuffle=Fal
 
 data_iter = iter(train_loader)
 images, labels = next(data_iter)
+
+print("Data Loaded!")
 
 if EXTENDED_DEBUG: print(images[3])
 
@@ -139,6 +139,7 @@ print(f"Test Accuracy: {100 * correct / total:.2f}%")
 # Best: 93.99% using NeuralNetWithDropout 69.4% using NeuralNet 96.45% using NeuralNetWithDropout with 20% dropout
 # 97.3% using 10 epochs 98.1% 10 epochs and BatchNormalization 98.3% using 15 epochs and BatchNormalization
 # 20minutes of fucking training and using CNN gives accuracy of 98.7% with 20 epochs, saved as 21.pth
+# The CNN takes 60s per Epoch...
 
 # Save the model
 if DO_SAVE_MODEL or (0 < SAVE_MODEL_ABOVE_ACCURACY < 100 * correct / total):

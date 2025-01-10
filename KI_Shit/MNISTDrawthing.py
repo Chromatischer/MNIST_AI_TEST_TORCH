@@ -1,17 +1,16 @@
-import torch
-import numpy as np
 from tkinter import *
 
-import torchvision.transforms
+import numpy as np
+import torch
+import torch.nn.functional as f
 from PIL import Image, ImageGrab
-from rich.box import SQUARE
-from sympy import print_glsl
 
 import CNN_Network
 import NeuralNetWithBatchNorm
 
 EXTENDED_DEBUG_INFO = False
-
+CLEAR_CANVAS_AFTER_PREDICTION = True
+POPUP_KYS_TIME = 30
 
 # Define the class for your Tkinter-based drawing application
 class DigitRecognizerApp:
@@ -21,8 +20,11 @@ class DigitRecognizerApp:
         self.window.geometry("310x450")
         self.window.resizable(False, False)
 
+
+        self.current_popup = None # Destroying old popups using this
+
         # Canvas to draw the digit
-        self.canvas = Canvas(self.window, width=308, height=308, bg="white")
+        self.canvas = Canvas(self.window, width=308, height=308, bg="white") # some multiple of 28x28
         self.canvas.pack()
 
         # Buttons for clearing the canvas and predicting the digit
@@ -32,8 +34,8 @@ class DigitRecognizerApp:
         self.predict_button = Button(self.window, text="Predict", command=self.predict_digit)
         self.predict_button.pack(side=RIGHT, padx=10)
 
-        self.close_button = Button(self.window, text="Close", command=self.close_app)
-        self.close_button.pack(side=RIGHT, padx=200)
+        self.close_button = Button(self.window, text="Close", command=self.close_app) # doesn't show up...
+        self.close_button.pack(side=RIGHT, padx=100)
 
         # Load the trained PyTorch model
         print("Loading model...")
@@ -60,8 +62,11 @@ class DigitRecognizerApp:
         self.canvas.delete("all")
         self.x = self.y = None
 
+    @DeprecationWarning
     def capture_image(self):
-        """Capture the drawing and save it as an image."""
+        """Capture the drawing and save it as an image.
+        DEPRECATED, USE: capture_image_new!
+        """
         x = self.window.winfo_rootx() + self.canvas.winfo_x()
         y = self.window.winfo_rooty() + self.canvas.winfo_y()
         x1 = x + self.canvas.winfo_width()
@@ -125,32 +130,56 @@ class DigitRecognizerApp:
         # Use the model to predict
         with torch.no_grad():
             prediction = self.model(img_tensor)
-            if EXTENDED_DEBUG_INFO: print(prediction)
+
+            probabilities = f.softmax(prediction[0], dim=0)
+
+            if EXTENDED_DEBUG_INFO:
+                print(f"Raw logits: {prediction}")
+                print(f"Probabilities. {probabilities}")
+
             # Better prediction display in command line:
             for i in range(10):
-                print(f"{i}: {NeuralNetWithBatchNorm.number_Modifier(prediction[0][i].item()):.2f}% was: ({prediction[0][i].item():.2f})")
+                print(f"{i}: {probabilities[i].item() * 100:.2f}% logit: ({prediction[0][i].item():.2f})")
 
             predicted_digit = torch.argmax(prediction).item()
 
         # Show the prediction
-        self.show_prediction(predicted_digit, NeuralNetWithBatchNorm.number_Modifier(prediction[0][predicted_digit].item()))
+        self.show_prediction(predicted_digit, probabilities[predicted_digit].item() * 100)
+
+        # Clear the canvas
+        if CLEAR_CANVAS_AFTER_PREDICTION: self.clear_canvas()
 
     def show_prediction(self, digit, accuracy):
         """Display the predicted digit in a popup window."""
-        popup = Toplevel(self.window)
-        popup.title("Prediction")
-        label = Label(popup, text=f"Predicted Digit: {digit}", font=("Arial", 20))
+
+        # Ensure that there ist only one single popup on screen at a time!
+        if self.current_popup is not None:
+            self.current_popup.destroy()
+            self.current_popup = None
+
+        self.current_popup = Toplevel(self.window)
+        self.current_popup.title("Prediction")
+        label = Label(self.current_popup, text=f"Predicted Digit: {digit}", font=("Arial", 20))
         label.pack(pady=20)
 
         if accuracy < 80:
-            label = Label(popup, text=f"Accuracy: {accuracy:.2f}% (Unsure)", font=("Arial", 15), fg="red")
+            label = Label(self.current_popup, text=f"Accuracy: {accuracy:.2f}% (Unsure)", font=("Arial", 15), fg="red")
         else:
-            label = Label(popup, text=f"Accuracy: {accuracy:.2f}% (Sure)", font=("Arial", 15), fg="green")
+            label = Label(self.current_popup, text=f"Accuracy: {accuracy:.2f}% (Sure)", font=("Arial", 15), fg="green")
 
         label.pack(pady=20)
 
-        button = Button(popup, text="Close", command=popup.destroy)
+        button = Button(self.current_popup, text="Close", command=self.current_popup.destroy)
         button.pack(pady=10)
+
+        self.current_popup.after(POPUP_KYS_TIME * 1000, self._auto_destroy_popup) # Auto destruct the window after some amount of time!
+
+    def _auto_destroy_popup(self):
+        """Function to automatically destroy a popup after some amount of time"""
+        if self.current_popup is not None:
+            self.current_popup.destroy()
+            self.current_popup = None
+            print("Auto destructed window!")
 
     def run(self):
         """Run the Tkinter main loop."""
@@ -158,6 +187,8 @@ class DigitRecognizerApp:
 
 # Main script
 if __name__ == "__main__":
+    print("Starting the Application")
     # Replace 'path_to_model.pth' with the actual path to your trained model file
     app = DigitRecognizerApp(model_path="model-Iterations/mnist_model_21.pth")
     app.run()
+    print("Application Stopped!")
